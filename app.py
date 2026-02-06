@@ -1,5 +1,11 @@
 import streamlit as st
 import pandas as pd
+import sys
+import os
+
+# Add the current directory to Python path to fix imports
+sys.path.insert(0, os.path.dirname(os.path.abspath(__file__)))
+
 from src.data_extraction import fetch_multiple_companies
 from src.data_processing import FinancialMetricsCalculator, create_comparison_dataframe
 from src.visualizations import (
@@ -28,6 +34,14 @@ st.markdown("""
         background-color: #f0f2f6;
         padding: 15px;
         border-radius: 10px;
+    }
+    div[data-testid="stMetricValue"] {
+        font-size: 24px;
+        color: #0e1117;
+    }
+    div[data-testid="stMetricLabel"] {
+        font-size: 14px;
+        color: #31333f;
     }
     </style>
     """, unsafe_allow_html=True)
@@ -115,52 +129,98 @@ with tab1:
     try:
         comparison_df = create_comparison_dataframe(companies_data)
         
-        # Display key metrics in columns
-        col1, col2, col3, col4 = st.columns(4)
-        
-        for idx, row in comparison_df.iterrows():
-            with col1:
-                st.metric(
-                    label=f"{row['Company']} Revenue Growth",
-                    value=f"{row['Revenue Growth (%)']:.2f}%" if pd.notna(row['Revenue Growth (%)']) else "N/A"
+        if comparison_df.empty:
+            st.warning("No comparison data available. Please check the data source.")
+        else:
+            # Display key metrics in columns - NOW WITH PROPER ERROR HANDLING
+            st.subheader("Key Performance Indicators")
+            
+            for idx, row in comparison_df.iterrows():
+                st.markdown(f"### {row['Company']} - {config.COMPANIES.get(row['Company'], row['Company'])}")
+                
+                col1, col2, col3, col4 = st.columns(4)
+                
+                with col1:
+                    revenue_growth = row.get('Revenue Growth (%)', None)
+                    if pd.notna(revenue_growth) and revenue_growth != 0:
+                        st.metric(
+                            label="Revenue Growth",
+                            value=f"{revenue_growth:.2f}%"
+                        )
+                    else:
+                        st.metric(
+                            label="Revenue Growth",
+                            value="N/A"
+                        )
+                
+                with col2:
+                    gross_margin = row.get('Gross Margin (%)', None)
+                    if pd.notna(gross_margin) and gross_margin != 0:
+                        st.metric(
+                            label="Gross Margin",
+                            value=f"{gross_margin:.2f}%"
+                        )
+                    else:
+                        st.metric(
+                            label="Gross Margin",
+                            value="N/A"
+                        )
+                
+                with col3:
+                    operating_margin = row.get('Operating Margin (%)', None)
+                    if pd.notna(operating_margin) and operating_margin != 0:
+                        st.metric(
+                            label="Operating Margin",
+                            value=f"{operating_margin:.2f}%"
+                        )
+                    else:
+                        st.metric(
+                            label="Operating Margin",
+                            value="N/A"
+                        )
+                
+                with col4:
+                    roe = row.get('ROE (%)', None)
+                    if pd.notna(roe) and roe != 0:
+                        st.metric(
+                            label="ROE",
+                            value=f"{roe:.2f}%"
+                        )
+                    else:
+                        st.metric(
+                            label="ROE",
+                            value="N/A"
+                        )
+                
+                st.markdown("---")
+            
+            # Comparison table
+            st.subheader("📋 Detailed Metrics Comparison")
+            
+            # Format the dataframe for display
+            display_df = comparison_df.copy()
+            
+            # Round numeric columns
+            numeric_cols = display_df.select_dtypes(include=['float64', 'int64']).columns
+            for col in numeric_cols:
+                display_df[col] = display_df[col].apply(
+                    lambda x: f"{x:.2f}" if pd.notna(x) else "N/A"
                 )
-            with col2:
-                st.metric(
-                    label=f"{row['Company']} Gross Margin",
-                    value=f"{row['Gross Margin (%)']:.2f}%" if pd.notna(row['Gross Margin (%)']) else "N/A"
-                )
-            with col3:
-                st.metric(
-                    label=f"{row['Company']} Operating Margin",
-                    value=f"{row['Operating Margin (%)']:.2f}%" if pd.notna(row['Operating Margin (%)']) else "N/A"
-                )
-            with col4:
-                st.metric(
-                    label=f"{row['Company']} ROE",
-                    value=f"{row['ROE (%)']:.2f}%" if pd.notna(row['ROE (%)']) else "N/A"
-                )
-        
-        st.markdown("---")
-        
-        # Comparison table
-        st.subheader("📋 Detailed Metrics Comparison")
-        
-        # Format the dataframe for display
-        display_df = comparison_df.copy()
-        
-        # Round numeric columns
-        numeric_cols = display_df.select_dtypes(include=['float64', 'int64']).columns
-        display_df[numeric_cols] = display_df[numeric_cols].round(2)
-        
-        st.dataframe(display_df, use_container_width=True)
-        
-        # Financial Health Radar Chart
-        st.subheader("🎯 Financial Health Score")
-        fig_health = plot_financial_health_score(comparison_df)
-        st.plotly_chart(fig_health, use_container_width=True)
+            
+            st.dataframe(display_df, use_container_width=True)
+            
+            # Financial Health Radar Chart
+            st.subheader("🎯 Financial Health Score")
+            try:
+                fig_health = plot_financial_health_score(comparison_df)
+                st.plotly_chart(fig_health, use_container_width=True)
+            except Exception as e:
+                st.error(f"Error creating health score chart: {e}")
         
     except Exception as e:
         st.error(f"Error creating overview: {e}")
+        import traceback
+        st.code(traceback.format_exc())
 
 # TAB 2: Revenue Analysis
 with tab2:
@@ -177,26 +237,30 @@ with tab2:
         col1, col2 = st.columns(2)
         
         for idx, ticker in enumerate(selected_tickers):
-            calculator = FinancialMetricsCalculator(
-                companies_data[ticker]['income_statement'],
-                companies_data[ticker]['balance_sheet'],
-                companies_data[ticker]['cash_flow']
-            )
-            
-            revenue_growth = calculator.calculate_revenue_growth()
-            
-            with col1 if idx % 2 == 0 else col2:
-                st.markdown(f"**{ticker} - {config.COMPANIES[ticker]}**")
+            try:
+                calculator = FinancialMetricsCalculator(
+                    companies_data[ticker]['income_statement'],
+                    companies_data[ticker]['balance_sheet'],
+                    companies_data[ticker]['cash_flow']
+                )
                 
-                if not revenue_growth.empty:
-                    growth_df = pd.DataFrame({
-                        'Year': revenue_growth.index,
-                        'Growth (%)': revenue_growth.values
-                    }).round(2)
+                revenue_growth = calculator.calculate_revenue_growth()
+                
+                with col1 if idx % 2 == 0 else col2:
+                    st.markdown(f"**{ticker} - {config.COMPANIES[ticker]}**")
                     
-                    st.dataframe(growth_df, use_container_width=True)
-                else:
-                    st.warning(f"No revenue growth data available for {ticker}")
+                    if not revenue_growth.empty:
+                        growth_df = pd.DataFrame({
+                            'Year': revenue_growth.index.astype(str),
+                            'Growth (%)': revenue_growth.values
+                        })
+                        growth_df['Growth (%)'] = growth_df['Growth (%)'].round(2)
+                        
+                        st.dataframe(growth_df, use_container_width=True)
+                    else:
+                        st.warning(f"No revenue growth data available for {ticker}")
+            except Exception as e:
+                st.error(f"Error processing {ticker}: {e}")
         
     except Exception as e:
         st.error(f"Error in revenue analysis: {e}")
@@ -224,18 +288,24 @@ with tab3:
             col1, col2 = st.columns(2)
             
             with col1:
-                fig_gross = plot_metrics_over_time(
-                    companies_data, selected_company, 'Gross Margin (%)'
-                )
-                if fig_gross:
-                    st.plotly_chart(fig_gross, use_container_width=True)
+                try:
+                    fig_gross = plot_metrics_over_time(
+                        companies_data, selected_company, 'Gross Margin (%)'
+                    )
+                    if fig_gross:
+                        st.plotly_chart(fig_gross, use_container_width=True)
+                except Exception as e:
+                    st.error(f"Error plotting gross margin: {e}")
             
             with col2:
-                fig_operating = plot_metrics_over_time(
-                    companies_data, selected_company, 'Operating Margin (%)'
-                )
-                if fig_operating:
-                    st.plotly_chart(fig_operating, use_container_width=True)
+                try:
+                    fig_operating = plot_metrics_over_time(
+                        companies_data, selected_company, 'Operating Margin (%)'
+                    )
+                    if fig_operating:
+                        st.plotly_chart(fig_operating, use_container_width=True)
+                except Exception as e:
+                    st.error(f"Error plotting operating margin: {e}")
         
     except Exception as e:
         st.error(f"Error in profitability analysis: {e}")
@@ -254,27 +324,30 @@ with tab4:
         
         for ticker in selected_tickers:
             with st.expander(f"{ticker} - {config.COMPANIES[ticker]}"):
-                calculator = FinancialMetricsCalculator(
-                    companies_data[ticker]['income_statement'],
-                    companies_data[ticker]['balance_sheet'],
-                    companies_data[ticker]['cash_flow']
-                )
-                
-                fcf = calculator.calculate_free_cash_flow()
-                
-                if not fcf.empty:
-                    fcf_df = pd.DataFrame({
-                        'Year': fcf.index,
-                        'Free Cash Flow': fcf.values
-                    })
-                    
-                    fcf_df['Free Cash Flow'] = fcf_df['Free Cash Flow'].apply(
-                        lambda x: f"${x:,.0f}"
+                try:
+                    calculator = FinancialMetricsCalculator(
+                        companies_data[ticker]['income_statement'],
+                        companies_data[ticker]['balance_sheet'],
+                        companies_data[ticker]['cash_flow']
                     )
                     
-                    st.dataframe(fcf_df, use_container_width=True)
-                else:
-                    st.warning(f"No FCF data available for {ticker}")
+                    fcf = calculator.calculate_free_cash_flow()
+                    
+                    if not fcf.empty:
+                        fcf_df = pd.DataFrame({
+                            'Year': fcf.index.astype(str),
+                            'Free Cash Flow': fcf.values
+                        })
+                        
+                        fcf_df['Free Cash Flow'] = fcf_df['Free Cash Flow'].apply(
+                            lambda x: f"${x:,.0f}" if pd.notna(x) else "N/A"
+                        )
+                        
+                        st.dataframe(fcf_df, use_container_width=True)
+                    else:
+                        st.warning(f"No FCF data available for {ticker}")
+                except Exception as e:
+                    st.error(f"Error calculating FCF for {ticker}: {e}")
         
     except Exception as e:
         st.error(f"Error in cash flow analysis: {e}")
@@ -303,12 +376,26 @@ with tab5:
                 st.write(f"**Industry:** {company_info.get('industry', 'N/A')}")
                 st.write(f"**Country:** {company_info.get('country', 'N/A')}")
                 st.write(f"**Website:** {company_info.get('website', 'N/A')}")
-                st.write(f"**Employees:** {company_info.get('fullTimeEmployees', 'N/A'):,}")
+                employees = company_info.get('fullTimeEmployees', 0)
+                if employees:
+                    st.write(f"**Employees:** {employees:,}")
+                else:
+                    st.write(f"**Employees:** N/A")
             
             with col2:
                 st.subheader("Market Data")
-                st.write(f"**Market Cap:** ${company_info.get('marketCap', 0):,.0f}")
-                st.write(f"**Enterprise Value:** ${company_info.get('enterpriseValue', 0):,.0f}")
+                market_cap = company_info.get('marketCap', 0)
+                if market_cap:
+                    st.write(f"**Market Cap:** ${market_cap:,.0f}")
+                else:
+                    st.write(f"**Market Cap:** N/A")
+                
+                enterprise_value = company_info.get('enterpriseValue', 0)
+                if enterprise_value:
+                    st.write(f"**Enterprise Value:** ${enterprise_value:,.0f}")
+                else:
+                    st.write(f"**Enterprise Value:** N/A")
+                
                 st.write(f"**P/E Ratio:** {company_info.get('trailingPE', 'N/A')}")
                 st.write(f"**Forward P/E:** {company_info.get('forwardPE', 'N/A')}")
                 st.write(f"**Beta:** {company_info.get('beta', 'N/A')}")
@@ -317,8 +404,14 @@ with tab5:
             
             # Financial summary table
             st.subheader("Financial Metrics Summary")
-            summary_table = create_financial_summary_table(companies_data, selected_company_detail)
-            st.dataframe(summary_table, use_container_width=True)
+            try:
+                summary_table = create_financial_summary_table(companies_data, selected_company_detail)
+                if not summary_table.empty:
+                    st.dataframe(summary_table, use_container_width=True)
+                else:
+                    st.warning("No summary data available")
+            except Exception as e:
+                st.error(f"Error creating summary table: {e}")
             
         except Exception as e:
             st.error(f"Error loading company details: {e}")

@@ -2,6 +2,11 @@ import plotly.graph_objects as go
 import plotly.express as px
 from plotly.subplots import make_subplots
 import pandas as pd
+import sys
+import os
+
+# Fix import path
+sys.path.insert(0, os.path.dirname(os.path.dirname(os.path.abspath(__file__))))
 
 def plot_revenue_trend(companies_data, tickers):
     """
@@ -24,8 +29,11 @@ def plot_revenue_trend(companies_data, tickers):
             # Sort by date
             revenue = revenue.sort_index()
             
+            # Convert timestamps to strings for display
+            dates = [str(d.year) for d in revenue.index]
+            
             fig.add_trace(go.Scatter(
-                x=revenue.index,
+                x=dates,
                 y=revenue.values,
                 mode='lines+markers',
                 name=ticker,
@@ -105,8 +113,11 @@ def plot_fcf_trend(companies_data, tickers):
             fcf = operating_cf + capex  # capex is negative
             fcf = fcf.sort_index()
             
+            # Convert timestamps to strings
+            dates = [str(d.year) for d in fcf.index]
+            
             fig.add_trace(go.Scatter(
-                x=fcf.index,
+                x=dates,
                 y=fcf.values,
                 mode='lines+markers',
                 name=ticker,
@@ -149,12 +160,16 @@ def plot_financial_health_score(metrics_df):
         for cat in categories:
             if cat in metrics_df.columns:
                 val = row[cat]
-                # Normalize (simple approach - you can make this more sophisticated)
-                if cat == 'Current Ratio':
+                if pd.isna(val):
+                    values.append(0)
+                elif cat == 'Current Ratio':
+                    # Normalize current ratio (ideal is around 1.5-2.0)
                     normalized = min(val * 50, 100)  # 2.0 ratio = 100
+                    values.append(normalized)
                 else:
+                    # For percentages, cap at 100
                     normalized = min(max(val, 0), 100)
-                values.append(normalized)
+                    values.append(normalized)
             else:
                 values.append(0)
         
@@ -192,40 +207,48 @@ def plot_metrics_over_time(companies_data, ticker, metric_name):
     Returns:
         plotly.graph_objects.Figure: Time series chart
     """
-    from data_processing import FinancialMetricsCalculator
+    # Import here to avoid circular imports
+    from src.data_processing import FinancialMetricsCalculator
     
-    calculator = FinancialMetricsCalculator(
-        companies_data[ticker]['income_statement'],
-        companies_data[ticker]['balance_sheet'],
-        companies_data[ticker]['cash_flow']
-    )
-    
-    all_metrics = calculator.calculate_all_metrics()
-    
-    if metric_name in all_metrics.columns:
-        metric_data = all_metrics[metric_name].sort_index()
-        
-        fig = go.Figure()
-        
-        fig.add_trace(go.Scatter(
-            x=metric_data.index,
-            y=metric_data.values,
-            mode='lines+markers',
-            name=metric_name,
-            line=dict(width=3, color='#1f77b4'),
-            marker=dict(size=10)
-        ))
-        
-        fig.update_layout(
-            title=f'{ticker} - {metric_name} Over Time',
-            xaxis_title='Year',
-            yaxis_title=metric_name,
-            template='plotly_white',
-            height=400
+    try:
+        calculator = FinancialMetricsCalculator(
+            companies_data[ticker]['income_statement'],
+            companies_data[ticker]['balance_sheet'],
+            companies_data[ticker]['cash_flow']
         )
         
-        return fig
-    else:
+        all_metrics = calculator.calculate_all_metrics()
+        
+        if metric_name in all_metrics.columns:
+            metric_data = all_metrics[metric_name].sort_index()
+            
+            # Convert timestamps to strings
+            dates = [str(d.year) for d in metric_data.index]
+            
+            fig = go.Figure()
+            
+            fig.add_trace(go.Scatter(
+                x=dates,
+                y=metric_data.values,
+                mode='lines+markers',
+                name=metric_name,
+                line=dict(width=3, color='#1f77b4'),
+                marker=dict(size=10)
+            ))
+            
+            fig.update_layout(
+                title=f'{ticker} - {metric_name} Over Time',
+                xaxis_title='Year',
+                yaxis_title=metric_name,
+                template='plotly_white',
+                height=400
+            )
+            
+            return fig
+        else:
+            return None
+    except Exception as e:
+        print(f"Error plotting {metric_name} for {ticker}: {e}")
         return None
 
 
@@ -240,31 +263,35 @@ def create_financial_summary_table(companies_data, ticker):
     Returns:
         pd.DataFrame: Summary table
     """
-    from data_processing import FinancialMetricsCalculator
+    from src.data_processing import FinancialMetricsCalculator
     
-    calculator = FinancialMetricsCalculator(
-        companies_data[ticker]['income_statement'],
-        companies_data[ticker]['balance_sheet'],
-        companies_data[ticker]['cash_flow']
-    )
-    
-    metrics = calculator.calculate_all_metrics()
-    
-    # Get most recent year
-    if not metrics.empty:
-        latest = metrics.iloc[0]
-        
-        # Format for display
-        summary = pd.DataFrame({
-            'Metric': latest.index,
-            'Value': latest.values
-        })
-        
-        # Round numeric values
-        summary['Value'] = summary['Value'].apply(
-            lambda x: f"{x:,.2f}" if isinstance(x, (int, float)) else x
+    try:
+        calculator = FinancialMetricsCalculator(
+            companies_data[ticker]['income_statement'],
+            companies_data[ticker]['balance_sheet'],
+            companies_data[ticker]['cash_flow']
         )
         
-        return summary
-    
-    return pd.DataFrame()
+        metrics = calculator.calculate_all_metrics()
+        
+        # Get most recent year
+        if not metrics.empty:
+            latest = metrics.iloc[0]
+            
+            # Format for display
+            summary = pd.DataFrame({
+                'Metric': latest.index,
+                'Value': latest.values
+            })
+            
+            # Round numeric values
+            summary['Value'] = summary['Value'].apply(
+                lambda x: f"{x:,.2f}" if isinstance(x, (int, float)) and pd.notna(x) else "N/A"
+            )
+            
+            return summary
+        
+        return pd.DataFrame()
+    except Exception as e:
+        print(f"Error creating summary for {ticker}: {e}")
+        return pd.DataFrame()
