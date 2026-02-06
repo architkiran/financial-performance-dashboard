@@ -1,6 +1,6 @@
 # 📊 Financial Performance Dashboard
 
-## Link: [https://financialperformancedashboard.streamlit.app/]
+### Link: https://financialperformancedashboard.streamlit.app/
 A comprehensive financial analysis dashboard that visualizes and compares the performance of public companies using real-time data.
 
 ![Dashboard Screenshot](screenshots/dashboard_overview.png)
