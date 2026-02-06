@@ -73,24 +73,32 @@ streamlit run app.py
 - Detailed comparison table
 - Financial health radar chart
 
+![Overview](screenshots/SS1.png)
+
 ### Revenue Analysis
 - Revenue trends over time
 - Year-over-year growth rates
 - Comparative analysis
+
+![Revenue Analysis](screenshots/SS2.png)
 
 ### Profitability
 - Margin comparisons
 - Profitability trends
 - Operating efficiency metrics
 
-### Cash Flow
-- Free cash flow trends
-- Operating cash flow analysis
-- Capital expenditure tracking
+![Profitability](screenshots/SS3.png)
 
 ### Company Details
 - Company information
 - Market data
 - Comprehensive financial summary
+
+![Details](screenshots/SS4.png)
+### Cash Flow
+- Free cash flow trends
+- Operating cash flow analysis
+- Capital expenditure tracking
+
 
 ## 🗂️ Project Structure
